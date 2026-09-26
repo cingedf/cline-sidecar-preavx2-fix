@@ -2,6 +2,20 @@
 
 A PowerShell script that rebuilds Cline Desktop's `code-sidecar.exe` with **Bun 1.4.x** so that it starts on Windows x64 CPUs that do not support AVX2.
 
+## Status
+
+As of **2026-09-26**:
+
+| Item | State |
+| --- | --- |
+| Desktop **v0.0.37** (latest release, published 2026-09-26) | **Still affected** — ships a Bun 1.3.13 sidecar compiled for the standard `bun-windows-x64` target |
+| Upstream issue [cline/cline#14066](https://github.com/cline/cline/issues/14066) | Open — community reports cover desktop v0.0.26 through v0.0.37 |
+| Upstream PR [cline/cline#14082](https://github.com/cline/cline/pull/14082) ("use baseline Bun target for Windows x64 sidecar") | Open, not merged |
+| npm CLI (`cline@3.0.65`, binary shipped as `@cline/cli-windows-x64`) | **Affected as well** — built with the same Bun 1.3.13 standard x64 target (`cli-publish.yml`, `apps/cli/script/build.ts` at tag `cli-v3.0.65`). This repository does not patch the CLI |
+| This patch, verified against v0.0.37 | Works — sidecar rebuilt with Bun 1.4.2 starts and stays up |
+
+The script itself needs no version-specific changes: it reads the installed app version, checks out the matching tag, and rebuilds. Until upstream ships baseline binaries, re-running it after each desktop update is what keeps Cline working on affected CPUs.
+
 ## Symptom
 
 On affected machines Cline Desktop opens but behaves as if it were offline — the backend never becomes available and no models can be used. Windows records an Application Error 1000 for the sidecar:
@@ -16,16 +30,18 @@ The desktop app's `hooks.jsonl` records `failed_external_process_exit`, and the 
 
 ## Root cause
 
-The sidecar bundled with the desktop app is compiled with Bun 1.3.13 using the standard `bun-windows-x64` target. Per the Bun documentation, the x64 runtime target is built for Nehalem (SSE4.2) but distributes code paths selected at runtime that use AVX2/AVX-512. On a CPU without AVX2 — observed on an Intel Pentium Gold 5405U, but the affected CPU class is larger — the sidecar faults before it can serve the UI, which surfaces as "Cline cannot go online".
+The sidecar bundled with the desktop app is compiled with Bun 1.3.13 using the standard `bun-windows-x64` target. Per the Bun documentation, the x64 runtime target is built for Nehalem (SSE4.2) but distributes code paths selected at runtime that use AVX2/AVX-512. On a CPU without AVX2 the sidecar faults before it can serve the UI, which surfaces as "Cline cannot go online".
+
+**Affected CPU class** — any Windows x64 CPU without AVX2, including CPUs that have AVX but not AVX2. Reports on #14066 cover, among others: Nehalem (Core i7 Q740), Westmere-EP (Xeon X5650), Ivy Bridge (Core i5-3470) and Whiskey Lake Pentium Gold 5405U. CPUs with AVX2 are unaffected.
 
 Tracked upstream:
 
 - **cline/cline#14066** — *Desktop backend + CLI crash-loop on pre-AVX CPUs — ship Windows x64 `-baseline` Bun binaries* (open)
-- **cline/cline#14082** — *fix(desktop): use baseline Bun target for Windows x64 sidecar* (proposed fix, open)
+- **cline/cline#14082** — *fix(desktop): use baseline Bun target for Windows x64 sidecar* (proposed fix, open, not merged)
 
 ## How this fix works
 
-Rebuild the *same* sidecar source with Bun 1.4.x (the Rust-based runtime generation, released 2026-08-20) and replace the installed `code-sidecar.exe`. The resulting executable reports its own Bun version in `FileVersion` (e.g. `1.4.2`), starts cleanly on the affected CPU class, and the app UI works normally afterwards.
+Rebuild the *same* sidecar source with **Bun 1.4.x** and replace the installed `code-sidecar.exe`. Bun 1.4.0+ builds target baseline CPU support by default (noted in the #14066 thread), so no extra compilation flags beyond the ones already used by the script are required. The resulting executable reports its own Bun version in `FileVersion` (e.g. `1.4.2`), starts cleanly on the affected CPU class, and the app UI works normally afterwards.
 
 Evidence from the machine that motivated this fix, after replacing the binary:
 
@@ -103,6 +119,7 @@ Optional hardening: the desktop app resolves its backend binary from the `CLINE_
 ## Limitations
 
 - **Windows x64 only.** The crash is specific to the x64 Bun runtime; on CPUs with AVX2 the official sidecar works and this patch is unnecessary.
+- **The npm CLI is out of scope.** `cline@3.0.65` is compiled the same way (Bun 1.3.13, standard x64 target) and fails the same way on affected CPUs; patching it would mean rebuilding its binary from source and re-applying after every CLI update.
 - The script stops Cline while patching and needs network access for `git fetch` / `bun install`.
 - The first run initializes a source checkout and build dependencies; later runs reuse them.
 - The exact `ntdll` fault offsets vary by Windows build — they are diagnostic evidence only, nothing the script depends on.
@@ -113,8 +130,8 @@ Community-maintained and unofficial. Not affiliated with, endorsed by, or suppor
 
 ## References
 
-- cline/cline#14066 — Desktop backend + CLI crash-loop on pre-AVX CPUs
-- cline/cline#14082 — fix(desktop): use baseline Bun target for Windows x64 sidecar
+- [cline/cline#14066](https://github.com/cline/cline/issues/14066) — Desktop backend + CLI crash-loop on pre-AVX CPUs
+- [cline/cline#14082](https://github.com/cline/cline/pull/14082) — fix(desktop): use baseline Bun target for Windows x64 sidecar
 - Bun documentation — `bun build --compile` and cross-compilation targets
 
 ## License
