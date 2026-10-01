@@ -4,17 +4,37 @@ A PowerShell script that rebuilds Cline Desktop's `code-sidecar.exe` with **Bun 
 
 ## Status
 
-As of **2026-09-26**:
+As of **2026-10-01**:
 
 | Item | State |
 | --- | --- |
-| Desktop **v0.0.37** (latest release, published 2026-09-26) | **Still affected** — ships a Bun 1.3.13 sidecar compiled for the standard `bun-windows-x64` target |
+| Desktop **v0.0.40** (latest release, published 2026-09-30) | **Still affected** — verified directly in the tag's `apps/examples/desktop-app/scripts/build-sidecar-bin.ts`: line 30 returns `bun-windows-x64` for `x86_64-pc-windows`. Baseline is used only for Linux (line 34) |
+| PR #14082 status, checked by diff | `git diff desktop-v0.0.37 desktop-v0.0.40 -- build-sidecar-bin.ts` is **empty** — the file is byte-identical across both tags, so the fix has **not** been merged |
 | Upstream issue [cline/cline#14066](https://github.com/cline/cline/issues/14066) | Open — community reports cover desktop v0.0.26 through v0.0.37 |
 | Upstream PR [cline/cline#14082](https://github.com/cline/cline/pull/14082) ("use baseline Bun target for Windows x64 sidecar") | Open, not merged |
 | npm CLI (`cline@3.0.65`, binary shipped as `@cline/cli-windows-x64`) | **Affected as well** — built with the same Bun 1.3.13 standard x64 target (`cli-publish.yml`, `apps/cli/script/build.ts` at tag `cli-v3.0.65`). This repository does not patch the CLI |
-| This patch, verified against v0.0.37 | Works — sidecar rebuilt with Bun 1.4.2 starts and stays up |
+| This patch, verified against v0.0.40 | Works — sidecar rebuilt with Bun 1.4.2 starts and stays up |
+
+Note that the official workflow pins `bun-version: "1.4.2"` for v0.0.40, but that alone does **not** fix the problem: what matters is the `--target` (`bun-windows-x64`, i.e. the standard runtime), not the Bun version.
 
 The script itself needs no version-specific changes: it reads the installed app version, checks out the matching tag, and rebuilds. Until upstream ships baseline binaries, re-running it after each desktop update is what keeps Cline working on affected CPUs.
+
+> ### Desktop users: there is a simpler, fully automated option
+>
+> If you are using the **[cline-desktop-zh](https://github.com/cingedf/cline-desktop-zh)** Chinese localization patch, its `一键升级并汉化.cmd` / `upgrade-cline-zh.ps1` already wraps everything this repository does — and it additionally:
+>
+> - detects AVX2 support automatically (so it does nothing on CPUs that are unaffected);
+> - **checks the official source each run** to see whether upstream has switched Windows to the baseline target, and skips compiling once it has;
+> - verifies that the in-app version number matches the installed version (the UI version comes from the repo's `tauri.conf.json`, not the exe, so a stale tag makes the UI report an old version);
+> - restarts Cline through the Chinese launcher and verifies the result (no crash loop, matching SHA256, Chinese UI actually rendered);
+> - cleans up temp files and stale backups.
+>
+> ```powershell
+> git clone --depth 1 https://github.com/cline/cline.git   # official source
+> # place cline-zh next to cline-app.exe, then double-click 一键升级并汉化.cmd
+> ```
+>
+> This repository remains useful on its own for anyone who only needs the sidecar rebuilt without the localization layer.
 
 ## Symptom
 
